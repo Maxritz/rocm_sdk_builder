@@ -19,7 +19,7 @@ This project has been so far tested with the following AMD Radeon GPUs:
 - AMD RX 7700S/Framework Laptop 16 (gfx1102)
 - AMD Radeon 780M Laptop iGPU (gfx1103)
 - AMD RX 6800 XT (gfx1030)
-- AMD RX 6800 (gfx1030)
+- AMD RX 6700 (gfx1031)
 - AMD RX 6600 (gfx1032)
 - AMD RX 5700 (gfx1010)
 - AMD Radeon Pro V520 (gfx1011)
