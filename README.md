@@ -1,6 +1,6 @@
 # ROCM SDK Builder Briefly
 
-ROCM SDK Builder provides easy and convinient machine learning and GPU computing development environment by using single or multiple regular consumer level GPUs on PC and laptop environments.
+ROCM SDK Builder provides easy and convenient machine learning and GPU computing development environment by using single or multiple regular consumer level GPUs on PC and laptop environments.
 
 It builds and integrates AMD¨s ROCm machine learning stack and other common ML Tools and models to easy to use environment. It is especially targeting the consumer Level discrete and integrated GPUs available on desktops and laptops.
 
@@ -29,10 +29,11 @@ This project has been so far tested with the following AMD Radeon GPUs:
 - AMD Strix Point iGPU (gfx1150) / (Experimental support, testing and feedback needed)
 - AMD Strix Halo iGPU (gfx1151) / (Experimental support)
 - Radeon VII (gfx906) / (Experimental support)
-- MI50 CDNA (gfx906) / (Experimental support)
+- MI50 CDNA (gfx906) / (Tested recently)
 - MI100 CDNA (gfx908) / (Experimental support)
 - MI210/250 CDNA (gfx90a) / (Experimental support)
 - MI300A/MI300X CDNA (gfx940, gfx941, gfx942) / (Experimental support)
+- AMD XDNA/XDNA2 NPU (experimental support, requires also xdna drivers to be patched to kernel)
 
 Older GPUs having 8GB of memory or less may not be able to run the memory extensive benchmarks and applications but there are many application where they will still work well compared to CPU based opeations.
 
@@ -140,7 +141,7 @@ Babs.sh provides now as a new command since 6.1.2 version an update command whic
 Command will accept the git branch name where to checkout as an optional parameter. Note that update command does not check binfo files which does not belong to any blist files in binfo/extra directory.
 
 
-# ROCM SDK Builder Use Examples
+# ROCM SDK Builder Usage Examples
 
 Following examples show how to run various types of applications in the builder ROCM SDK BUILDER environment.
 
@@ -264,8 +265,8 @@ They can all utilize the AMD GPU's and can be build with the following commands.
 
 - Stable Diffusion WebUI will create server on address http://127.0.0.1:7860/
 - Launch your browser to access the server and test the image generation from text description: http://127.0.0.1:7860/
-
-Note: It may take a while from the stable-diffustion to download the model files to /opt/rocm_sdk_models directory and then to open ui on browserto test the picture generation:
+- On first launch the stable diffusion webui initialization and image generation takes some time, because it downloads the model file to /opt/rocm_sdk_models directory before initializing the web server for ui.
+- Try to set "Sampling steps" in UI to be first less than 20, for example to 5. I have seen errors to generate images on many GPU's if it is using 20 steps.
 
 ## Test VLLM
 
@@ -274,6 +275,13 @@ Note: It may take a while from the stable-diffustion to download the model files
 # ./test_questions_and_answers.sh
 ```
 Note: It may take a while for the first run to download the model on first time to /opt/rocm_sdk_models/vllm directory and then to run the question/answer example.
+
+If you encounter the error: ```ModuleNotFoundError: No module named 'vllm'```, please rebuild the vllm module individually as described below. 
+If the issue persists and you see the message ``` No files found to uninstall ```, try forcing the reinstallation using the following command:
+```
+# cd rocm_sdk_builder
+# pip install ./packages/whl/vllm+<version>.whl --force-reinstall --no-deps
+```
 
 ## Run Full GPU Benchmarks
 
@@ -285,7 +293,86 @@ AMD GPU specific results have been run either on ROCM SDK Builder 6.11 or 6.12 e
 
 For many GPU's the benchmark results have improved significantly from 6.1.1 release thanks to improvements made to tuning made ROCBLAS, Composable Kernel and FFTW.
 
-# Commonly Used Babs.sh commands
+## Test AMD's XDNA/XDNA NPU (new AMD 2024/2025 hw)
+
+ROCM SDK Builder has integrated initial XDNA userspace software stack support for testing and application development purposes.
+
+- peanu llvm-aie compiler for xdna/xdna2 NPUs
+- xilinx xrt runtime required by xdna
+- xrt-xdna plugin to manage the application load via xrt runtime to xdna
+- test application to verify the functionality
+
+In addition you will need to build kernel with xdna driver and xdna firmware
+as it is not yet available on any Linux distribution kernels. (expected to be in upstream kernel on 6.14)
+
+Copy xdna firmware files to /lib/firmware/amdnpu folder if they are there yet.
+Little newer firmware version may be available on https://github.com/amd/xdna-driver
+
+```
+git clone https://kernel.googlesource.com/pub/scm/linux/kernel/git/firmware/linux-firmware.git
+sudo mkdir /lib/firmware/amdnpu/1502_00/
+sudo cp linux-firmware/amdnpu/1502_00/npu.sbin.1.5.2.380 /lib/firmware/amdnpu/1502_00/npu.sbin
+...
+do same also for other subfolders like 17f0_10, 17f0_11, 17f0_20
+```
+
+Build kernel from xdna kernel branch available on https://github.com/lamikr/linux
+
+```
+git clone https://github.com/lamikr/linux
+cd linux
+git checkout release/613rc7_xdna_driver
+./kernel_build.sh
+```
+
+Reboot and check that amdxdna driver gets loaded
+
+```
+dmesg | grep amdxdna
+```
+
+If xdna driver worked and was able to load the firmware, you should see message like: "Initialized amdxdna_accel_driver"
+
+If xdna driver failed to find the firmware, you should see a this type of message from kernel dmesg: "npu.sbin failed with error -2".
+In case of error, you may need to force the firmware files to get copied to initrd image. At least of Fedora 40 that can be done with command:
+
+```
+"dracut -f -i /lib/firmware /lib/firmware
+```
+
+Build userspace application
+
+```
+# ./babs.sh -b binfo/extra/amd-aie.blist
+```
+
+And tested with command
+
+```
+# source /opt/rock_sdk_<version>/bin/env_rocm.sh
+# example_noop_test /opt/rocm_sdk_612/apps/aie/tools/bins/1502_00/validate.xclbin
+```
+
+Which should printout following output:
+
+```
+    Host test code start...
+    Host test code is creating device object...
+    Host test code is loading xclbin object...
+    Host test code is creating kernel object...
+    Host test code kernel name: DPU_PDI_0
+    Host code is registering xclbin to the device...
+    Host code is creating hw_context...
+    Host test code is creating kernel object...
+    Host test code allocate buffer objects...
+    Host test code sync buffer objects to device...
+    Host test code iterations (~10 seconds): 70000
+    Host test microseconds: 4640738
+    Host test average latency: 66 us/iter
+    TEST PASSED!
+```
+
+# Commonly Used Babs.sh Commands
 
 Get help from the commands
 
@@ -368,7 +455,7 @@ Fetch latest source code from repositories but do not do checkout
 # ./babs.sh -f
 ```
 
-# Common Developer Tasks
+# Development Tips and Customizations
 
 ## Change Default Build Variables
 
@@ -506,6 +593,7 @@ At the moment there exist 4 extra blist files.
 - binfo/extra/ai_tools.blist
 - binfo/extra/amd_media_tools.blist
 - binfo/extra/amd_devel_tools.blist
+- binfo/extra/amd_aie.blist (requires hw with xdna/xdna2 NPU released on 2024/2025)
 - binfo/extra/google_tools.blist
 
 These files are simply text files which list the binfo files in the dependency order they are needed or wanted to be build.
@@ -562,6 +650,14 @@ Binary and library search paths and other environment variables required to exec
 ```
 
 Note that this command needs to be executed only once for each bash terminal session.
+
+# Docker/Podman Images
+
+There exist now firstdocker/podman image for CDNA based cards for testing.
+[Download address for CDNA based GPU's (x906/908/90a/942)](https://drive.google.com/drive/folders/1XnoSvL41XhrKT_5NbBSrUZ_1LaVpQ-xb?usp=sharing).
+
+Instructions for download, import and usage
+[docs/notes/containers/howto_download_and_run_docker_image.txt](docs/notes/containers/howto_download_and_run_docker_image.txt)
 
 
 Copyright (C) 2024 by Mika Laitio <lamikr@gmail.com>
